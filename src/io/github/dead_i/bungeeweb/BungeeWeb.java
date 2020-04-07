@@ -1,8 +1,14 @@
 package io.github.dead_i.bungeeweb;
 
+import com.ayanix.panther.internal.sql2o.Connection;
+import com.ayanix.panther.internal.sql2o.Query;
+import com.ayanix.panther.internal.sql2o.ResultSetHandler;
 import com.google.common.io.ByteStreams;
-import io.github.dead_i.bungeeweb.commands.*;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import io.github.dead_i.bungeeweb.commands.ReloadConfig;
 import io.github.dead_i.bungeeweb.listeners.*;
+import io.github.dead_i.bungeeweb.objects.LoginData;
+import lombok.Getter;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.plugin.Plugin;
 import net.md_5.bungee.config.Configuration;
@@ -15,41 +21,35 @@ import org.eclipse.jetty.server.session.HashSessionManager;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.util.log.StdErrLog;
 import org.eclipse.jetty.util.security.Password;
-import org.mcstats.Metrics;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.xml.bind.DatatypeConverter;
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.security.SecureRandom;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class BungeeWeb extends Plugin {
     private static Configuration config;
     private static Configuration defaultConfig;
+    @Getter
     private static DatabaseManager manager;
 
+    @Getter
+    private static ExecutorService executor;
+
     public void onEnable() {
-        // Run metrics
-        final Plugin plugin = this;
-        getProxy().getScheduler().runAsync(this, new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Metrics metrics = new Metrics(plugin);
-                    metrics.start();
-                } catch (IOException e) {
-                    getLogger().info("Unable to connect to Metrics for plugin statistics.");
-                }
-            }
-        });
+        // Executor service
+        // 2 threads minimum as one thread is always used for the web service
+        executor = Executors.newFixedThreadPool(5, new ThreadFactoryBuilder().setNameFormat("BungeeWeb %d").build());
 
         // Get configuration
         reloadConfig(this);
@@ -66,29 +66,15 @@ public class BungeeWeb extends Plugin {
         setupDirectory("themes");
 
         // Connect to the database
-        manager = new DatabaseManager(this, "jdbc:mysql://" + getConfig().get("database.host") + ":" + getConfig().getInt("database.port") + "/" + getConfig().get("database.db") + "?useUnicode=true&characterEncoding=utf8", getConfig().get("database.user").toString(), getConfig().get("database.pass").toString());
-        Connection db = getDatabase();
-        if (db == null) {
-            getLogger().severe("BungeeWeb is disabling. Please check your database settings in your config.yml");
-            return;
-        }
+        manager = new DatabaseManager(this,
+                getConfig().getString("database.host"),
+                getConfig().getInt("database.port"),
+                getConfig().getString("database.db"),
+                getConfig().getString("database.user"),
+                getConfig().getString("database.pass"));
 
-        // Initial database table setup
-        try {
-            db.createStatement().executeUpdate("CREATE TABLE IF NOT EXISTS `" + getConfig().getString("database.prefix") + "log` (`id` int(16) NOT NULL AUTO_INCREMENT, `time` int(10) NOT NULL, `type` int(2) NOT NULL, `uuid` varchar(32) NOT NULL, `username` varchar(16) NOT NULL, `content` varchar(100) NOT NULL DEFAULT '', PRIMARY KEY (`id`)) CHARACTER SET utf8");
-            db.createStatement().executeUpdate("CREATE TABLE IF NOT EXISTS `" + getConfig().getString("database.prefix") + "users` (`id` int(4) NOT NULL AUTO_INCREMENT, `user` varchar(16) NOT NULL, `pass` varchar(32) NOT NULL, `salt` varchar(16) NOT NULL, `group` int(1) NOT NULL DEFAULT '1', PRIMARY KEY (`id`)) CHARACTER SET utf8");
-            db.createStatement().executeUpdate("CREATE TABLE IF NOT EXISTS `" + getConfig().getString("database.prefix") + "stats` (`id` int(16) NOT NULL AUTO_INCREMENT, `time` int(10) NOT NULL, `playercount` int(6) NOT NULL DEFAULT -1, `maxplayers` int(6) NOT NULL DEFAULT -1, `activity` int(12) NOT NULL DEFAULT -1, PRIMARY KEY (`id`)) CHARACTER SET utf8");
-
-            ResultSet rs = db.createStatement().executeQuery("SELECT COUNT(*) FROM `" + getConfig().getString("database.prefix") + "users`");
-            while (rs.next()) if (rs.getInt(1) == 0) {
-                String salt = salt();
-                db.createStatement().executeUpdate("INSERT INTO `" + getConfig().getString("database.prefix") + "users` (`user`, `pass`, `salt`, `group`) VALUES('admin', '" + encrypt("admin", salt) + "', '" + salt + "', 3)");
-                getLogger().warning("A new admin account has been created.");
-                getLogger().warning("Both the username and password is 'admin'. Please change the password after first logging in.");
-            }
-        } catch (SQLException e) {
-            getLogger().severe("Unable to connect to the database. Disabling...");
-            e.printStackTrace();
+        if (!manager.connect())
+        {
             return;
         }
 
@@ -108,7 +94,16 @@ public class BungeeWeb extends Plugin {
 
         // Graph loops
         int inc = getConfig().getInt("server.statscheck");
-        if (inc > 0) getProxy().getScheduler().schedule(this, new StatusCheck(this, inc), inc, inc, TimeUnit.SECONDS);
+        if (inc > 0) getProxy().getScheduler().schedule(this, new Runnable()
+        {
+            StatusCheck statusCheck = new StatusCheck(BungeeWeb.this, inc);
+
+            @Override
+            public void run()
+            {
+                executor.execute(statusCheck);
+            }
+        }, inc, inc, TimeUnit.SECONDS);
 
         // Setup logging
         org.eclipse.jetty.util.log.Log.setLog(new JettyLogger());
@@ -129,17 +124,27 @@ public class BungeeWeb extends Plugin {
         server.setStopAtShutdown(true);
 
         // Start listening
-        getProxy().getScheduler().runAsync(this, new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    server.start();
-                } catch(Exception e) {
-                    getLogger().warning("Unable to bind web server to port.");
-                    e.printStackTrace();
-                }
+        executor.execute(() -> {
+            try {
+                server.start();
+            } catch(Exception e) {
+                getLogger().warning("Unable to bind web server to port.");
+                e.printStackTrace();
             }
         });
+    }
+
+    @Override
+    public void onDisable()
+    {
+        for (Runnable runnable : executor.shutdownNow())
+        {
+            runnable.run();
+        }
+
+        if(manager.getStorage() != null) {
+            manager.getStorage().disconnect();
+        }
     }
 
     public void setupLocale(String lang) {
@@ -171,7 +176,16 @@ public class BungeeWeb extends Plugin {
         int days = getConfig().getInt("server." + type + "days");
         int purge = getConfig().getInt("server.purge", 10);
         if (purge > 0 && days > 0) {
-            getProxy().getScheduler().schedule(this, new PurgeScheduler("stats", days), purge, purge, TimeUnit.MINUTES);
+            getProxy().getScheduler().schedule(this, new Runnable()
+            {
+                PurgeScheduler purge = new PurgeScheduler("stats", days);
+
+                @Override
+                public void run()
+                {
+                    executor.execute(purge);
+                }
+            }, purge, purge, TimeUnit.MINUTES);
         }
     }
 
@@ -199,30 +213,24 @@ public class BungeeWeb extends Plugin {
         defaultConfig = provider.load(new Scanner(defaultStream, "UTF-8").useDelimiter("\\A").next());
     }
 
-    public static Connection getDatabase() {
-        return manager.getConnection();
+    public static void log(ProxiedPlayer player, int type) {
+        log(player, type, "");
     }
 
-    public static void log(Plugin plugin, ProxiedPlayer player, int type) {
-        log(plugin, player, type, "");
-    }
-
-    public static void log(Plugin plugin, final ProxiedPlayer player, final int type, final String content) {
-        plugin.getProxy().getScheduler().runAsync(plugin, new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    PreparedStatement st = getDatabase().prepareStatement("INSERT INTO `" + getConfig().getString("database.prefix") + "log` (`time`, `type`, `uuid`, `username`, `content`) VALUES(?, ?, ?, ?, ?)");
-                    st.setLong(1, System.currentTimeMillis() / 1000);
-                    st.setInt(2, type);
-                    st.setString(3, getUUID(player));
-                    st.setString(4, player.getName());
-                    st.setString(5, content.length() > 100 ? content.substring(0, 99) : content);
-                    st.executeUpdate();
-                    st.close();
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
+    public static void log(final ProxiedPlayer player, final int type, final String content)
+    {
+        executor.execute(() -> {
+            try (Connection connection = manager.getStorage().getSQL().open();
+                 Query query = connection.createQuery("INSERT INTO `" + getConfig().getString("database.prefix") + "log` (`time`, `type`, `uuid`, `username`," +
+                         " `content`) " +
+                         "VALUES(:time, :type, :uuid, :username, :content)"))
+            {
+                query.addParameter("time", System.currentTimeMillis() / 1000)
+                        .addParameter("type", type)
+                        .addParameter("uuid", getUUID(player))
+                        .addParameter("username", player.getName())
+                        .addParameter("content", content.length() > 100 ? content.substring(0, 99) : content)
+                        .executeUpdate();
             }
         });
     }
@@ -231,17 +239,29 @@ public class BungeeWeb extends Plugin {
         return p.getUniqueId().toString().replace("-", "");
     }
 
-    public static ResultSet getLogin(String user, String pass) {
+    public static LoginData getLogin(String user, String pass) throws Exception
+    {
         if (user == null || pass == null) return null;
-        try {
-            PreparedStatement st = getDatabase().prepareStatement("SELECT * FROM `" + BungeeWeb.getConfig().getString("database.prefix") + "users` WHERE `user`=?");
-            st.setString(1, user);
-            ResultSet rs = st.executeQuery();
-            while (rs.next()) if (rs.getString("pass").equals(BungeeWeb.encrypt(pass + rs.getString("salt")))) return rs;
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return null;
+
+        return executor.submit(() -> {
+            try (Connection connection = manager.getStorage().getSQL().open();
+                 Query query = connection.createQuery("SELECT * FROM `" + BungeeWeb.getConfig().getString("database.prefix") + "users` WHERE `user`=:user"))
+            {
+                return query.addParameter("user", user)
+                        .executeAndFetchFirst((ResultSetHandler<LoginData>) resultSet -> {
+                            if (!resultSet.getString("pass").equals(BungeeWeb.encrypt(pass + resultSet.getString("salt"))))
+                            {
+                                return null;
+                            }
+
+                            return new LoginData(
+                                    resultSet.getString("id"),
+                                    resultSet.getString("user"),
+                                    resultSet.getString("pass"),
+                                    resultSet.getInt("group"));
+                        });
+            }
+        }).get();
     }
 
     public static List getGroupPermissions(int group) {

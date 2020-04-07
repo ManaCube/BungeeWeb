@@ -8,6 +8,7 @@ import net.md_5.bungee.api.plugin.Plugin;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -81,8 +82,8 @@ public class GetLogs extends APICommand {
         qry += "LIMIT " + offset + ", " + limit;
 
         ArrayList<Object> out = new ArrayList<Object>();
-        try {
-            PreparedStatement st = BungeeWeb.getDatabase().prepareStatement(qry);
+        try (Connection connection = BungeeWeb.getManager().getStorage().getSQL().open().getJdbcConnection()) {
+            PreparedStatement st = connection.prepareStatement(qry);
             int i = 0;
             for (Object o : params) {
                 i++;

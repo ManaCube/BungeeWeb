@@ -17,7 +17,7 @@ public class ServerKickListener implements Listener {
     @EventHandler
     public void onServerKick(ServerKickEvent event) {
         if (event.getPlayer() != null && event.getPlayer().getServer() != null) {
-            BungeeWeb.log(plugin, event.getPlayer(), 5, event.getPlayer().getServer().getInfo().getName() + ": " + BaseComponent.toPlainText(event.getKickReasonComponent()));
+            BungeeWeb.log(event.getPlayer(), 5, event.getPlayer().getServer().getInfo().getName() + ": " + BaseComponent.toPlainText(event.getKickReasonComponent()));
         }
     }
 }

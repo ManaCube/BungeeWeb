@@ -19,7 +19,8 @@ public class GetSession extends APICommand {
     }
 
     @Override
-    public void execute(Plugin plugin, HttpServletRequest req, HttpServletResponse res, String[] args) throws IOException, SQLException {
+    public void execute(Plugin plugin, HttpServletRequest req, HttpServletResponse res, String[] args) throws IOException
+    {
         HashMap<String, Object> out = new HashMap<String, Object>();
 
         Integer group = (Integer) req.getSession().getAttribute("group");

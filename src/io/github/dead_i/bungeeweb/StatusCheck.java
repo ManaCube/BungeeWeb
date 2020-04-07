@@ -32,9 +32,7 @@ public class StatusCheck implements Runnable {
             params.add(players);
         }
 
-        try {
-            Connection db = BungeeWeb.getDatabase();
-
+        try (Connection db = BungeeWeb.getManager().getStorage().getSQL().open().getJdbcConnection()){
             if (config.getBoolean("stats.activity")) {
                 ResultSet activity = db.createStatement().executeQuery("SELECT COUNT(*) FROM `" + config.getString("database.prefix") + "log` WHERE `time`>" + (cur - inc));
                 activity.next();

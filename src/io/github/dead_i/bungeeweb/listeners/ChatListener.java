@@ -23,6 +23,6 @@ public class ChatListener implements Listener {
             type = 2;
             if (BungeeWeb.getConfig().getList("hiddencommands").contains(msg.split(" ")[0].substring(1).toLowerCase())) return;
         }
-        BungeeWeb.log(plugin, (ProxiedPlayer) event.getSender(), type, msg);
+        BungeeWeb.log((ProxiedPlayer) event.getSender(), type, msg);
     }
 }

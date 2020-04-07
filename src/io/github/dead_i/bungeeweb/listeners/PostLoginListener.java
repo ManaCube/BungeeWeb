@@ -17,6 +17,6 @@ public class PostLoginListener implements Listener {
     @EventHandler
     public void onPostLogin(PostLoginEvent event) {
         ProxiedPlayer p = event.getPlayer();
-        BungeeWeb.log(plugin, p, 3, p.getAddress().getHostString());
+        BungeeWeb.log(p, 3, p.getAddress().getHostString());
     }
 }

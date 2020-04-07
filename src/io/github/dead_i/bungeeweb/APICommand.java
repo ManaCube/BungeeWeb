@@ -43,5 +43,5 @@ public abstract class APICommand {
         return group > 0 && (i == null || i.isEmpty() || BungeeWeb.getGroupPermissions(group).contains(permission));
     }
 
-    public abstract void execute(Plugin plugin, HttpServletRequest req, HttpServletResponse res, String[] args) throws IOException, SQLException;
+    public abstract void execute(Plugin plugin, HttpServletRequest req, HttpServletResponse res, String[] args) throws IOException, SQLException, Exception;
 }

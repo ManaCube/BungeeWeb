@@ -1,5 +1,8 @@
 package io.github.dead_i.bungeeweb.api;
 
+import com.ayanix.panther.internal.sql2o.Connection;
+import com.ayanix.panther.internal.sql2o.Query;
+import com.ayanix.panther.internal.sql2o.ResultSetHandler;
 import io.github.dead_i.bungeeweb.APICommand;
 import io.github.dead_i.bungeeweb.BungeeWeb;
 import net.md_5.bungee.api.plugin.Plugin;
@@ -10,6 +13,7 @@ import java.io.IOException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 
 public class GetUUID extends APICommand {
     public GetUUID() {
@@ -24,23 +28,33 @@ public class GetUUID extends APICommand {
             return;
         }
 
-        ResultSet rs = getByUsername(user, false);
-        boolean matched = rs.next();
+        String rs = getByUsername(user, false);
+        boolean matched = !rs.isEmpty();
+
         if (!matched) {
             rs = getByUsername(user, true);
-            matched = rs.next();
+            matched = !rs.isEmpty();
         }
 
         if (matched) {
-            res.getWriter().print("{ \"uuid\": \"" + rs.getString("uuid") + "\" }");
+            res.getWriter().print("{ \"uuid\": \"" + rs + "\" }");
         }else{
             res.getWriter().print("{ \"error\": \"No such username exists in the database.\" }");
         }
     }
 
-    private ResultSet getByUsername(String search, boolean partial) throws SQLException {
-        PreparedStatement st = BungeeWeb.getDatabase().prepareStatement("SELECT * FROM `" + BungeeWeb.getConfig().getString("database.prefix") + "log` WHERE `username` LIKE ? ORDER BY `id` DESC LIMIT 1");
-        st.setString(1, partial ? "%" + search + "%" : search);
-        return st.executeQuery();
+    private String getByUsername(String search, boolean partial) throws SQLException {
+        try(Connection connection = BungeeWeb.getManager().getStorage().getSQL().open();
+            Query query = connection.createQuery("SELECT * FROM `" + BungeeWeb.getConfig().getString("database.prefix") + "log` WHERE `username` LIKE :conditions ORDER BY `id` DESC LIMIT 1")) {
+
+            List<String> results = query.addParameter("conditions", partial ? "%" + search + "%" : search)
+                    .executeAndFetch((ResultSetHandler<String>) resultSet -> resultSet.getString("uuid"));
+
+            if(results.isEmpty()) {
+                return "";
+            }
+
+            return results.get(0);
+        }
     }
 }

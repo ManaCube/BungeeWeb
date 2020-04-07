@@ -15,6 +15,6 @@ public class ServerConnectedListener implements Listener {
 
     @EventHandler
     public void onServerConnected(ServerConnectedEvent event) {
-        BungeeWeb.log(plugin, event.getPlayer(), 6, event.getServer().getInfo().getName());
+        BungeeWeb.log(event.getPlayer(), 6, event.getServer().getInfo().getName());
     }
 }

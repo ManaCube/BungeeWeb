@@ -7,6 +7,7 @@ import net.md_5.bungee.api.plugin.Plugin;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -46,24 +47,34 @@ public class EditUser extends APICommand {
         String id = req.getParameter("id");
         if (id != null && !id.isEmpty() && BungeeWeb.isNumber(id) && conditions.size() > 0) {
             int power = BungeeWeb.getGroupPower(req);
+
             if (!conditions.contains("group") || groupid < power) {
                 String cond = "";
+
                 for (String s : conditions) {
                     cond += "`" + s + "`=?, ";
                 }
+
                 cond = cond.substring(0, cond.length() - 2);
 
-                PreparedStatement st = BungeeWeb.getDatabase().prepareStatement("UPDATE `" + BungeeWeb.getConfig().getString("database.prefix") + "users` SET " + cond + " WHERE `id`=? AND `group`<?");
+                try (Connection connection = BungeeWeb.getManager().getStorage().getSQL().open().getJdbcConnection())
+                {
+                    PreparedStatement statement =
+                            connection.prepareStatement("UPDATE `" + BungeeWeb.getConfig().getString("database.prefix") + "users` SET " + cond + " WHERE `id`=? AND `group`<?");
 
-                int i = 0;
-                for (Object o : params) {
-                    i++;
-                    st.setObject(i, o);
+                    int i = 0;
+
+                    for (Object o : params)
+                    {
+                        i++;
+                        statement.setObject(i, o);
+                    }
+
+                    statement.setInt(i + 1, Integer.parseInt(id));
+                    statement.setInt(i + 2, power);
+
+                    statement.executeUpdate();
                 }
-
-                st.setInt(i + 1, Integer.parseInt(id));
-                st.setInt(i + 2, power);
-                st.executeUpdate();
 
                 res.getWriter().print("{ \"status\": 1 }");
             }else{

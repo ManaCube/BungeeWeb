@@ -2,6 +2,7 @@ package io.github.dead_i.bungeeweb;
 
 import com.google.common.io.ByteStreams;
 import io.github.dead_i.bungeeweb.api.*;
+import io.github.dead_i.bungeeweb.objects.LoginData;
 import net.md_5.bungee.api.plugin.Plugin;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.handler.AbstractHandler;
@@ -14,7 +15,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
 
@@ -59,28 +59,35 @@ public class WebHandler extends AbstractHandler {
                     }else{
                         res.getWriter().print("{ \"error\": \"You do not have permission to perform this action.\" }");
                     }
-                } catch (SQLException e) {
+                } catch (Exception e) {
                     plugin.getLogger().warning("A MySQL database error occurred.");
                     e.printStackTrace();
                 }
                 baseReq.setHandled(true);
             }
         }else if (path.length > 1 && path[1].equalsIgnoreCase("login")) {
-            ResultSet rs = BungeeWeb.getLogin(req.getParameter("user"), req.getParameter("pass"));
-            if (req.getMethod().equals("POST") && rs != null) {
-                try {
-                    req.getSession().setAttribute("id", rs.getString("id"));
-                    req.getSession().setAttribute("user", rs.getString("user"));
-                    req.getSession().setAttribute("group", rs.getInt("group"));
+            try
+            {
+                LoginData loginData = BungeeWeb.getLogin(req.getParameter("user"), req.getParameter("pass"));
+
+                if (req.getMethod().equals("POST") && loginData != null)
+                {
+                    req.getSession().setAttribute("id", loginData.getId());
+                    req.getSession().setAttribute("user", loginData.getUsername());
+                    req.getSession().setAttribute("group", loginData.getGroup());
+
                     res.getWriter().print("{ \"status\": 1 }");
-                } catch(SQLException e) {
-                    plugin.getLogger().warning("A MySQL database error occurred.");
-                    e.printStackTrace();
+                } else
+                {
+                    res.getWriter().print("{ \"status\": 0 }");
                 }
-            }else{
-                res.getWriter().print("{ \"status\": 0 }");
+
+                baseReq.setHandled(true);
+            } catch (Exception e)
+            {
+                plugin.getLogger().warning("A database error occurred.");
+                e.printStackTrace();
             }
-            baseReq.setHandled(true);
         }else if (path.length > 1 && path[1].equalsIgnoreCase("logout")) {
             req.getSession().invalidate();
             res.sendRedirect("/");

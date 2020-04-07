@@ -15,6 +15,6 @@ public class PlayerDisconnectListener implements Listener {
 
     @EventHandler
     public void onPlayerDisconnect(PlayerDisconnectEvent event) {
-        BungeeWeb.log(plugin, event.getPlayer(), 4);
+        BungeeWeb.log(event.getPlayer(), 4);
     }
 }
