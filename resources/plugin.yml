@@ -1,4 +1,4 @@
 name: BungeeWeb
-version: 0.1
+version: ${project.version}
 author: Dead-i
 main: io.github.dead_i.bungeeweb.BungeeWeb
