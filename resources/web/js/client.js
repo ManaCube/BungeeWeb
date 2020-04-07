@@ -260,7 +260,7 @@ function addPlayerLogs(uuid, offset, filter, search, cb) {
 			$('#playerinfo h1').text(user);
 			$('#playerinfo .uuid').text(data[0].uuid);
 			$('#playerinfo .log').html('');
-			skinview.changeSkin(user);
+			skinview.changeSkin(data[0].uuid);
 		}
 
 		for (item in data) {
