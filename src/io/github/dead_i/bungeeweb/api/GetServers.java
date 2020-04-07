@@ -32,7 +32,8 @@ public class GetServers extends APICommand {
                 i++;
                 if (i > 50) break;
             }
-            out.put(info.getName(), players);
+            //out.put(info.getName(), players);
+            // disabled due to redisbungee incompatibilities
         }
         res.getWriter().print(gson.toJson(out));
     }

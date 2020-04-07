@@ -126,7 +126,9 @@ $(document).click(function() {
 
 // Logo click handler
 $('.navbar h1').click(function() {
-	$('.navbar a[href="/dashboard"]').click();
+	// redisbungee incompat
+	//$('.navbar a[href="/dashboard"]').click();
+	$('.navbar a[href="/logs"]').click();
 });
 
 // Player link click handler
@@ -175,8 +177,14 @@ function loadClient() {
 			var link = 'a[href="/' + path + '"]';
 			$('.navbar ' + link + ', .dropdown ' + link).addClass('active');
 		}else{
-			activepage = pages.dashboard;
+			//activepage = pages.dashboard;
+			activepage = pages.logs;
 			activepage.navigate();
+		}
+
+		if(activepage == pages.dashboard) {
+			activepage = pages.logs;
+			activepage.navigate()
 		}
 		
 		if (session.updatetime > 0) {
