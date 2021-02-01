@@ -1,4 +1,6 @@
 name: BungeeWeb
 version: ${project.version}
 author: Dead-i
+authors:
+  - Boomclaw
 main: io.github.dead_i.bungeeweb.BungeeWeb

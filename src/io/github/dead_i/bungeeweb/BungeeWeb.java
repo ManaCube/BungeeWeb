@@ -176,16 +176,10 @@ public class BungeeWeb extends Plugin {
         int days = getConfig().getInt("server." + type + "days");
         int purge = getConfig().getInt("server.purge", 10);
         if (purge > 0 && days > 0) {
-            getProxy().getScheduler().schedule(this, new Runnable()
-            {
-                PurgeScheduler purge = new PurgeScheduler("stats", days);
+            String table = type.equals("logs") ? "log" : type;
+            PurgeScheduler purger = new PurgeScheduler(this, table, days);
 
-                @Override
-                public void run()
-                {
-                    executor.execute(purge);
-                }
-            }, purge, purge, TimeUnit.MINUTES);
+            getProxy().getScheduler().schedule(this, purger, 0L, purge, TimeUnit.MINUTES);
         }
     }
 
